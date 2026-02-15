@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context-aware, Forecast-augmented, Risk-aware RL Autoscaling</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 20px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            font-weight: 600;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn.secondary {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .diagram-container {
+            position: relative;
+            min-height: 800px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .connection-line {
+            fill: none;
+            stroke-width: 2;
+            opacity: 0.6;
+            transition: all 0.3s ease;
+        }
+
+        .connection-line.main {
+            stroke: #667eea;
+        }
+
+        .connection-line.feedback {
+            stroke: #f093fb;
+            stroke-dasharray: 5,5;
+        }
+
+        .connection-line.trust {
+            stroke: #4facfe;
+            stroke-dasharray: 10,5;
+        }
+
+        .connection-line.highlighted {
+            stroke-width: 4;
+            opacity: 1;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+
+        .arrow-head {
+            transition: all 0.3s ease;
+        }
+
+        .nodes-container {
+            position: relative;
+            z-index: 2;
+            padding: 40px;
+            min-height: 800px;
+        }
+
+        .module-node {
+            position: absolute;
+            width: 220px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 2px solid transparent;
+        }
+
+        .module-node:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
+            border-color: #667eea;
+        }
+
+        .module-node.highlighted {
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.3), 0 12px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .module-node.dimmed {
+            opacity: 0.4;
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .module-number {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .module-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #1a1a2e;
+            line-height: 1.3;
+        }
+
+        .module-short {
+            font-size: 0.8rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            overflow-x: auto;
+            margin-top: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            line-height: 1.6;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 0.8rem;
+            z-index: 10;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+        }
+
+        .legend-line {
+            width: 30px;
+            height: 2px;
+            border-radius: 1px;
+        }
+
+        .legend-line.main { background: #667eea; }
+        .legend-line.feedback { 
+            background: #f093fb; 
+            background-image: linear-gradient(90deg, #f093fb 50%, transparent 50%);
+            background-size: 10px 100%;
+        }
+        .legend-line.trust { 
+            background: #4facfe;
+            background-image: linear-gradient(90deg, #4facfe 50%, transparent 50%);
+            background-size: 20px 100%;
+        }
+
+        .instructions {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 0.8rem;
+            max-width: 200px;
+            z-index: 10;
+        }
+
+        .instructions p {
+            margin: 6px 0;
+            opacity: 0.9;
+        }
+
+        .details-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 450px;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            padding: 30px;
+            overflow-y: auto;
+            z-index: 100;
+            transition: right 0.3s ease;
+            box-shadow: -5px 0 30px rgba(0, 0, 0, 0.3);
+            color: #1a1a2e;
+        }
+
+        .details-panel.active {
+            right: 0;
+        }
+
+        .details-panel h2 {
+            font-size: 1.4rem;
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .details-panel h3 {
+            font-size: 0.9rem;
+            margin: 20px 0 8px 0;
+            color: #444;
+            font-weight: 600;
+        }
+
+        .details-panel p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 12px;
+            color: #555;
+        }
+
+        .details-panel pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            line-height: 1.6;
+        }
+
+        .close-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.4rem;
+            color: #666;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-panel:hover {
+            background: rgba(0, 0, 0, 0.2);
+            color: #333;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 1200px) {
+            .nodes-container {
+                padding: 20px;
+            }
+            
+            .module-node {
+                width: 180px;
+                padding: 12px;
+            }
+            
+            .module-title {
+                font-size: 0.8rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .diagram-container {
+                overflow-x: auto;
+            }
+            
+            .nodes-container {
+                min-width: 800px;
+                padding: 20px;
+            }
+            
+            .legend, .instructions {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Context-aware, Forecast-augmented, Risk-aware RL Autoscaling</h1>
+        </header>
+
+        <div class="controls">
+            <button class="btn secondary" onclick="collapseAll()">Collapse All</button>
+            <button class="btn secondary" onclick="resetView()">Reset View</button>
+        </div>
+
+        <div class="diagram-container" id="diagram">
+            <svg id="connections-svg">
+                <defs>
+                    <marker id="arrow-main" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#667eea" />
+                    </marker>
+                    <marker id="arrow-feedback" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#f093fb" />
+                    </marker>
+                    <marker id="arrow-trust" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#4facfe" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <div class="nodes-container" id="nodesContainer">
+                <!-- Nodes will be inserted here by JavaScript -->
+            </div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-line main"></div>
+                    <span>Main Flow</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line feedback"></div>
+                    <span>Feedback Loop</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line trust"></div>
+                    <span>Trust Update</span>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <p>🖱️ <strong>Click</strong> a module to view details</p>
+                <p>🖱️ <strong>Hover</strong> to highlight flow</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="closeDetailsPanel()"></div>
+    <div class="details-panel" id="detailsPanel">
+        <button class="close-panel" onclick="closeDetailsPanel()">×</button>
+        <div id="detailsContent"></div>
+    </div>
+
+    <script>
+        // Module data
+        const modules = [
+            {
+                id: 1,
+                name: "Metrics Collector",
+                short: "Collect current system metrics (now-state)",
+                x: 50, y: 50,
+                description: "Collect current system metrics (now-state).",
+                inputs: "Prometheus/K8s metrics: RPS, CPU, Memory, p95 latency, replicas.",
+                exampleInput: "RPS=1200, CPU=72%, p95=280ms, replicas=6",
+                output: `{
+  "workload_now": 1200,
+  "cpu": 0.72,
+  "latency_p95_ms": 280,
+  "replicas": 6
+}`
+            },
+            {
+                id: 2,
+                name: "Context Event Ingestor",
+                short: "Ingest future-relevant context from humans/systems",
+                x: 50, y: 250,
+                description: "Ingest future-relevant context from humans/systems.",
+                inputs: "Marketing campaigns, deployments, feature flags, maintenance windows.",
+                exampleInput: `{
+  "type": "marketing_campaign",
+  "start": "08:00",
+  "end": "12:00",
+  "expected_impact": "+40% traffic",
+  "initial_trust": 0.6
+}`,
+                output: "Normalized event objects + trust per source."
+            },
+            {
+                id: 3,
+                name: "Forecasting Module",
+                short: "Probabilistic quantile forecasts",
+                x: 350, y: 50,
+                description: "Multi-horizon workload forecasts as quantiles aligned with scaling delay.",
+                inputs: "Recent workload history + current metrics + context events (+ their trust).",
+                output: `{
+  "horizons_min": [5,10,15],
+  "workload_q10": [1300,1400,1500],
+  "workload_q50": [1500,1700,1850],
+  "workload_q90": [1900,2200,2500]
+}`
+            },
+            {
+                id: 4,
+                name: "Online Credibility Scorer",
+                short: "Score forecast reliability online (0..1)",
+                x: 350, y: 350,
+                description: "Score forecast reliability online (0..1).",
+                inputs: "Recent window of realized y_t and earlier predicted q10/q50/q90 for those timesteps.",
+                output: `{
+  "forecast_trust": 0.58,
+  "signals": {
+    "coverage": 0.78,
+    "mape50": 0.10,
+    "bias": 0.05,
+    "sharpness": 0.40
+  }
+}`,
+                formulas: `coverage = mean( 1{ q10_t <= y_t <= q90_t } )
+coverage_error = abs(coverage - 0.90)
+mape50 = median( abs(y_t - q50_t) / max(y_t, eps) )
+bias = abs( mean(y_t - q50_t) / max(mean(y_t), eps) )
+sharpness = median( (q90_t - q10_t) / max(q50_t, eps) )
+
+score_cov = max(0, 1 - coverage_error / 0.20)
+score_acc = max(0, 1 - mape50 / 0.30)
+score_bias = max(0, 1 - bias / 0.20)
+score_sharp = max(0, 1 - sharpness / 1.00)
+
+trust_raw = 0.35*score_cov + 0.35*score_acc + 0.20*score_bias + 0.10*score_sharp
+trust = clamp(trust_raw, 0, 1)
+
+Sample: coverage=0.78, mape50=0.10, bias=0.05, sharpness=0.40 → trust ≈ 0.58`
+            },
+            {
+                id: 5,
+                name: "Belief State Builder",
+                short: "Build decision-ready state",
+                x: 650, y: 150,
+                description: 'Build a decision-ready state: "now + future belief + credibility + context".',
+                inputs: "Current_state + forecast quantiles + forecast_trust + active events (+ event trust).",
+                output: `{
+  "workload_now": 1200,
+  "cpu": 0.72,
+  "latency_p95_ms": 280,
+  "replicas": 6,
+  "forecast": {
+    "t_plus_5m": {"p50":1500,"p90":1900},
+    "t_plus_10m":{"p50":1700,"p90":2200}
+  },
+  "forecast_trust": 0.58,
+  "context": [
+    {"type":"marketing_campaign","active":true,"trust":0.6}
+  ]
+}`
+            },
+            {
+                id: 6,
+                name: "RL Decision Engine",
+                short: "Choose scaling action optimizing SLA vs cost",
+                x: 950, y: 150,
+                description: "Choose scaling action optimizing SLA risk vs cost vs oscillation.",
+                inputs: "Belief state",
+                output: `scale_to_replicas = 9
+OR keep_current`,
+                notes: "Policy learns to rely less on forecasts when trust is low."
+            },
+            {
+                id: 7,
+                name: "Kubernetes Actuator",
+                short: "Apply scaling action to cluster",
+                x: 1250, y: 150,
+                description: "Apply the scaling action to the cluster.",
+                inputs: "Desired replicas (e.g., 9)",
+                output: `kubectl scale deploy/my-service --replicas=9`
+            },
+            {
+                id: 8,
+                name: "Feedback & Reward Evaluator",
+                short: "Evaluate outcome and emit reward",
+                x: 950, y: 500,
+                description: "Evaluate outcome (SLA, cost, oscillation) and emit reward.",
+                inputs: "New latency, cost signals, replicas change, SLA threshold.",
+                output: `{
+  "reward": -1.525,
+  "components": {
+    "sla_penalty": 0.2,
+    "cost_penalty": 0.45,
+    "osc_penalty": 0.15
+  }
+}`,
+                formulas: `sla_penalty = max(0, (latency_p95 - sla_threshold) / sla_threshold)
+cost_penalty = replicas / max_replicas
+osc_penalty = abs(current_replicas - previous_replicas) / max_replicas
+reward = - ( w_sla*sla_penalty + w_cost*cost_penalty + w_osc*osc_penalty )
+
+Suggested weights: w_sla=5, w_cost=1, w_osc=0.5`
+            },
+            {
+                id: 9,
+                name: "Trust Update Loop",
+                short: "Update trust for forecasts and context sources",
+                x: 650, y: 500,
+                description: "Update trust for forecasts and context sources based on recent performance.",
+                inputs: "Forecast error stats, calibration/coverage, event outcome accuracy.",
+                output: "Updated forecast_trust and per-event-source trust; feeds back to modules 2 and 4."
+            }
+        ];
+
+        // Connections
+        const connections = [
+            { from: 1, to: 3, type: 'main' },
+            { from: 2, to: 3, type: 'main' },
+            { from: 2, to: 5, type: 'main' },
+            { from: 3, to: 4, type: 'main' },
+            { from: 3, to: 5, type: 'main' },
+            { from: 4, to: 5, type: 'main' },
+            { from: 5, to: 6, type: 'main' },
+            { from: 6, to: 7, type: 'main' },
+            { from: 7, to: 8, type: 'main' },
+            { from: 8, to: 9, type: 'main' },
+            // Feedback loops
+            { from: 8, to: 6, type: 'feedback', label: 'learning' },
+            { from: 9, to: 4, type: 'trust', label: 'trust' },
+            { from: 9, to: 2, type: 'trust', label: 'event trust' }
+        ];
+
+        // Render nodes
+        function renderNodes() {
+            const container = document.getElementById('nodesContainer');
+            
+            modules.forEach(module => {
+                const node = document.createElement('div');
+                node.className = 'module-node';
+                node.id = `module-${module.id}`;
+                node.style.left = `${module.x}px`;
+                node.style.top = `${module.y}px`;
+                
+                let detailsHTML = '';
+                
+                if (module.description) {
+                    detailsHTML += `
+                        <div class="detail-section">
+                            <div class="detail-label">Purpose</div>
+                            <div class="detail-content">${module.description}</div>
+                        </div>
+                    `;
+                }
+                
+                if (module.inputs) {
+                    detailsHTML += `
+                        <div class="detail-section">
+                            <div class="detail-label">Inputs</div>
+                            <div class="detail-content">${module.inputs}</div>
+                        </div>
+                    `;
+                }
+                
+                if (module.exampleInput) {
+                    detailsHTML += `
+                        <div class="detail-section">
+                            <div class="detail-label">Example Input</div>
+                            <pre>${module.exampleInput}</pre>
+                        </div>
+                    `;
+                }
+                
+                if (module.output) {
+                    detailsHTML += `
+                        <div class="detail-section">
+                            <div class="detail-label">Output</div>
+                            <pre>${module.output}</pre>
+                        </div>
+                    `;
+                }
+                
+                if (module.formulas) {
+                    detailsHTML += `
+                        <div class="detail-section">
+                            <div class="detail-label">Formulas</div>
+                            <pre>${module.formulas}</pre>
+                        </div>
+                    `;
+                }
+                
+                node.innerHTML = `
+                    <div class="module-header">
+                        <div class="module-number">${module.id}</div>
+                        <div class="module-title">${module.name}</div>
+                    </div>
+                    <div class="module-short">${module.short}</div>
+                `;
+                
+                node.addEventListener('click', () => {
+                    showDetailsPanel(module);
+                });
+                
+                node.addEventListener('mouseenter', () => {
+                    highlightConnections(module.id);
+                });
+                
+                node.addEventListener('mouseleave', () => {
+                    resetHighlights();
+                });
+                
+                container.appendChild(node);
+            });
+        }
+
+        // Render connections
+        function renderConnections() {
+            const svg = document.getElementById('connections-svg');
+            
+            connections.forEach((conn, index) => {
+                const fromModule = modules.find(m => m.id === conn.from);
+                const toModule = modules.find(m => m.id === conn.to);
+                
+                if (fromModule && toModule) {
+                    const fromX = fromModule.x + 220;
+                    const fromY = fromModule.y + 50;
+                    const toX = toModule.x;
+                    const toY = toModule.y + 50;
+                    
+                    // Create curved path
+                    const midX = (fromX + toX) / 2;
+                    let midY = (fromY + toY) / 2;
+                    
+                    // Adjust curve for feedback loops
+                    if (conn.type === 'feedback') {
+                        midY -= 80;
+                    } else if (conn.type === 'trust') {
+                        midY += 60;
+                    }
+                    
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', `M${fromX},${fromY} Q${midX},${midY} ${toX},${toY}`);
+                    path.setAttribute('class', `connection-line ${conn.type}`);
+                    path.setAttribute('id', `conn-${conn.from}-${conn.to}`);
+                    path.setAttribute('marker-end', `url(#arrow-${conn.type})`);
+                    
+                    svg.appendChild(path);
+                }
+            });
+        }
+
+        // Highlight connections
+        function highlightConnections(moduleId) {
+            // Highlight connected nodes
+            modules.forEach(module => {
+                const node = document.getElementById(`module-${module.id}`);
+                const isConnected = connections.some(conn => 
+                    (conn.from === moduleId && conn.to === module.id) ||
+                    (conn.to === moduleId && conn.from === module.id)
+                );
+                
+                if (module.id === moduleId) {
+                    node.classList.add('highlighted');
+                } else if (isConnected) {
+                    node.classList.add('highlighted');
+                } else {
+                    node.classList.add('dimmed');
+                }
+            });
+            
+            // Highlight connections
+            connections.forEach(conn => {
+                const line = document.getElementById(`conn-${conn.from}-${conn.to}`);
+                if (conn.from === moduleId || conn.to === moduleId) {
+                    line.classList.add('highlighted');
+                } else {
+                    line.style.opacity = '0.2';
+                }
+            });
+        }
+
+        // Reset highlights
+        function resetHighlights() {
+            document.querySelectorAll('.module-node').forEach(node => {
+                node.classList.remove('highlighted', 'dimmed');
+            });
+            
+            document.querySelectorAll('.connection-line').forEach(line => {
+                line.classList.remove('highlighted');
+                line.style.opacity = '';
+            });
+        }
+
+        // Global functions
+        window.showDetailsPanel = function(module) {
+            const panel = document.getElementById('detailsPanel');
+            const overlay = document.getElementById('overlay');
+            const content = document.getElementById('detailsContent');
+            
+            let html = `<h2>${module.id}. ${module.name}</h2>`;
+            
+            if (module.description) {
+                html += `
+                    <h3>Purpose</h3>
+                    <p>${module.description}</p>
+                `;
+            }
+            
+            if (module.inputs) {
+                html += `
+                    <h3>Inputs</h3>
+                    <p>${module.inputs}</p>
+                `;
+            }
+            
+            if (module.exampleInput) {
+                html += `
+                    <h3>Example Input</h3>
+                    <pre>${module.exampleInput}</pre>
+                `;
+            }
+            
+            if (module.output) {
+                html += `
+                    <h3>Output</h3>
+                    <pre>${module.output}</pre>
+                `;
+            }
+            
+            if (module.formulas) {
+                html += `
+                    <h3>Formulas</h3>
+                    <pre>${module.formulas}</pre>
+                `;
+            }
+            
+            if (module.notes) {
+                html += `
+                    <h3>Notes</h3>
+                    <p>${module.notes}</p>
+                `;
+            }
+            
+            content.innerHTML = html;
+            panel.classList.add('active');
+            overlay.classList.add('active');
+        };
+
+        window.closeDetailsPanel = function() {
+            const panel = document.getElementById('detailsPanel');
+            const overlay = document.getElementById('overlay');
+            panel.classList.remove('active');
+            overlay.classList.remove('active');
+        };
+
+        window.collapseAll = function() {
+            closeDetailsPanel();
+        };
+
+        window.resetView = function() {
+            closeDetailsPanel();
+            resetHighlights();
+        };
+
+        // Initialize
+        renderNodes();
+        renderConnections();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            // Could adjust layout here for different screen sizes
+        });
+    </script>
+</body>
+</html>
